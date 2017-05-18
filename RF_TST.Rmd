@@ -1,0 +1,137 @@
+---
+title: "Random Forest/Local Two-Sample Testing"
+author: "Peter Freeman"
+date: "May 18, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following chunk contains an implementation of the "honest tree" approach of Wager et al. (2014) and Wager & Athey (2015).
+  It may be treated as a black box. If it breaks, let us know!
+```{r}
+library(partykit)
+library(rpart)
+
+rf_prediction = function(rf,rf.data,pred.data=rf.data,prog.bar=FALSE)
+{
+  if ( is.null(rf$inbag) ) stop("Random forest must be trained with keep.inbag = TRUE")
+  if ( length(unique(colSums(rf$inbag))) > 1 ) {
+    stop("The keep.inbag field must store the number of times each observation was used.
+         \nMake sure the latest version of the randomForest package is installed from CRAN.")
+  }
+  
+  n.weights = rf$inbag
+  n.col     = ncol(n.weights)
+  N         = Matrix::Matrix(n.weights,sparse=TRUE)
+  N.avg     = Matrix::Matrix(Matrix::rowMeans(N),nrow(N),1)
+  
+  pred      = CB_cforest(rf=rf,pb=prog.bar,rf.data=rf.data,pred.data=pred.data)$preds
+  
+  pred.aggr = rowMeans(pred)
+  pred.cent = pred - pred.aggr
+  pred.sums = Matrix::Matrix(rowSums(pred.cent),1,nrow(pred.cent))
+  
+  C   = N %*% t(pred.cent) - N.avg %*% pred.sums
+  var = Matrix::colSums(C^2)/n.col^2
+  
+  return(data.frame('pred'=pred.aggr,var))
+}
+
+CB_cforest = function(rf,rf.data,pred.data=rf.data,pb=FALSE) 
+{
+  new.samples = match_sample(rf,rf.data)
+  pb.fun      = ifelse(pb,pbapply::pblapply,lapply)
+  out         = list()
+  out$preds   = pb.fun(new.samples,function(x) honest.tree(formula=as.formula(rf$call$formula),data=x,pred.data=pred.data))
+  out$preds   = do.call(cbind,out$preds)
+  return(out)
+}
+
+match_sample <- function(rf,rf.data) {
+  n = nrow(rf.data)
+  matched.samples = lapply(1:ncol(rf$inbag),function(B){
+                           n.uses            = rf$inbag[,B]
+                           names(n.uses)     = 1:n
+                           match.sample.rows = unlist(mapply(rep,x=as.numeric(names(n.uses)),each=n.uses))
+                           matched.sample    = rf.data[match.sample.rows, ]
+                           return(matched.sample)
+                          })
+  return(matched.samples)
+}
+
+honest.tree = function(formula0,data0,pred.data) 
+{
+  N      = dim(data0)[1]
+  index  = sample(1:N, N/2)
+  dat1   = data0[index,]
+  dat2   = data0[-index,]
+  result = rpart(formula0,data=dat1,control=rpart.control(minsplit=2,minbucket=1,cp=0.001))
+  
+  fit.party = as.party(result)
+  
+  pred.data$class.tree = predict(fit.party,newdata=pred.data,type="node")
+
+  dat.pred = data.frame(class.tree = as.factor(predict(fit.party,newdata=dat2,type="node")),y0=as.numeric(dat2$y))
+  agg.pred = aggregate(y0~class.tree,data=dat.pred,FUN=mean)
+  
+  if ( length(unique(result$where)) != length(unique(agg.pred$class.tree)) ) {
+    index.unique = which( ! unique(result$where) %in% unique(agg.pred$class.tree))
+    class.tree0  = unique(result$where)[index.unique]
+    append       = data.frame(class.tree=as.factor(class.tree0),y0=rep(1/2,length(class.tree0)))
+    agg.pred     = rbind(agg.pred,append)  
+  }
+  
+  s.index              = sapply(pred.data$class.tree,function(x) which(x==agg.pred$class.tree))
+  pred.data$pred       = agg.pred$y0[s.index]
+  return(pred.data$pred)
+}
+```
+
+HERE: enter data and set up
+  (a) a predictor data frame (which each column representing a different variable)
+  (b) a response vector
+  Note that one may also combine the predictors and response into a single data frame.
+  That would alter the call to randomForest slightly from what is shown.
+
+NEXT: split the predictor data frame and the response vector into training and test sets,
+  named pred.train, pred.test, resp.train, and resp.test.
+NOTE: we run random forest using only data in the two classes. Say for example there are 2000 training data, and we choose the
+  those with the 25% lowest masses to be our "low" class, and those with the 25% highest masses to be our "high" class.
+  Then the pred.train data frame that we pass to random forest would only contain 1000 rows, and the resp.train vector would
+  have only 1000 elements: 0 for the "low" class, and 1 for the "high" class. (The mapping of number to class type can be reversed,
+  although this is the most natural mapping.)
+  To reiterate: we don't use data that don't belong to either class to train our regression model!
+  There is no such class limitation for testing: predictions should be generated for *all* data set aside for testing.
+```{r}
+# Data entry, etc.
+```
+
+Run random forest in the style of Freeman et al. (2017). (It is run on the "native space" of predictors, i.e., there is no
+  transformation via, e.g., diffusion map before running it. Diffusion map, as applied in Freeman et al., is purely for visualization.
+  You can use the output below to determine which diffusion coordinates [computed separately!] are associated with different classes.)
+Output: which objects (i.e., rows) of pred.test are identified as being in "high"-class regions, in "low"-class regions, and in
+  neither (i.e., notsig).
+```{r}
+library(randomForest)
+set.seed(1)
+global.prop = 0.5
+rf.out  = randomForest(resp.train~.,data=pred.train,keep.inbag=TRUE,sampsize=nrow(pred.train)^0.7,replace=FALSE,ntrees=1000)
+rf.pred = rf_prediction(rf.out,rf.data=pred.train,pred.data=pred.test,prog.bar=FALSE)
+
+test.stat = (rf.pred$pred-global.prop)/sqrt(rf.pred$var)
+test.pval = 2 * ifelse(pnorm(test.stat,lower.tail = FALSE)< 1/2,pnorm(test.stat,lower.tail=FALSE),pnorm(test.stat,lower.tail=TRUE))
+test.pval = p.adjust(test.pval,"BH") * sign(test.stat)
+
+imp = importance(rf)
+print(imp)
+#dotchart(sort(imp[,1]),xlab="Mean Increase in Node Purity (Residual Sum of Squares)",pch=15,cex.axis=1.2,cex.lab=1.2)
+
+high        = (test.pval >= 0) & (test.pval <  0.05) & (test.stat > 0)
+low         = (test.pval <= 0) & (test.pval > -0.05) & (test.stat < 0)
+test.high   = which(high == T)
+test.low    = which(low  == T)
+test.notsig = which(xor(high,low) == FALSE)
+```
