@@ -66,7 +66,7 @@ honest.tree = function(formula0,data0,pred.data)
 {
   N      = dim(data0)[1]
   index  = sample(1:N, N/2)
-  dat1   = data0[index,]
+  dat1   <<- data0[index,]
   dat2   = data0[-index,]
   result = rpart(formula0,data=dat1,control=rpart.control(minsplit=2,minbucket=1,cp=0.001))
   
