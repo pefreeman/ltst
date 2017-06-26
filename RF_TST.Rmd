@@ -114,10 +114,14 @@ Run random forest in the style of Freeman et al. (2017). (It is run on the "nati
   You can use the output below to determine which diffusion coordinates [computed separately!] are associated with different classes.)
 Output: which objects (i.e., rows) of pred.test are identified as being in "high"-class regions, in "low"-class regions, and in
   neither (i.e., notsig).
+
+Note that one can change the p-value threshold for rejecting the null hypothesis (that the local class proportion 
+is consistent with the global class proportion). Below it is set to the standard value of 0.05.
 ```{r}
 library(randomForest)
 set.seed(1)
 global.prop = 0.5
+pval.thresh = 0.05  # standard statistics Type I error threshold
 rf.out  = randomForest(resp.train~.,data=pred.train,keep.inbag=TRUE,sampsize=nrow(pred.train)^0.7,replace=FALSE,ntrees=1000)
 rf.pred = rf_prediction(rf.out,rf.data=pred.train,pred.data=pred.test,prog.bar=FALSE)
 
@@ -129,8 +133,8 @@ imp = importance(rf)
 print(imp)
 #dotchart(sort(imp[,1]),xlab="Mean Increase in Node Purity (Residual Sum of Squares)",pch=15,cex.axis=1.2,cex.lab=1.2)
 
-high        = (test.pval >= 0) & (test.pval <  0.05) & (test.stat > 0)
-low         = (test.pval <= 0) & (test.pval > -0.05) & (test.stat < 0)
+high        = (test.pval >= 0) & (test.pval <  pval.thresh) & (test.stat > 0)
+low         = (test.pval <= 0) & (test.pval > -pval.thresh) & (test.stat < 0)
 test.high   = which(high == T)
 test.low    = which(low  == T)
 test.notsig = which(xor(high,low) == FALSE)
