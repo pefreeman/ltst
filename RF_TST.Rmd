@@ -122,7 +122,7 @@ library(randomForest)
 set.seed(1)
 global.prop = 0.5
 pval.thresh = 0.05  # standard statistics Type I error threshold
-rf.out  = randomForest(resp.train~.,data=pred.train,keep.inbag=TRUE,sampsize=nrow(pred.train)^0.7,replace=FALSE,ntrees=1000)
+rf.out  = randomForest(resp.train~.,data=pred.train,keep.inbag=TRUE,sampsize=nrow(pred.train)^0.7,replace=FALSE,ntree=1000)
 rf.pred = rf_prediction(rf.out,rf.data=pred.train,pred.data=pred.test,prog.bar=FALSE)
 
 test.stat = (rf.pred$pred-global.prop)/sqrt(rf.pred$var)

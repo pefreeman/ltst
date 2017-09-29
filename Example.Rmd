@@ -184,7 +184,7 @@ as being in high-mass-dominated, low-mass-dominated, and "not significant" regio
 set.seed(1234)
 alpha = 0.05
 ratio = sum(df.train.mass$y)/length(df.train.mass$y)
-rf      = try(randomForest(y~.,data=df.train.mass,keep.inbag=TRUE,sampsize=nrow(df.train.mass)^0.7,replace=FALSE,ntrees=1000))
+rf      = try(randomForest(y~.,data=df.train.mass,keep.inbag=TRUE,sampsize=nrow(df.train.mass)^0.7,replace=FALSE,ntree=1000))
 ij.mass = rf_prediction(rf,rf.data=df.train.mass,pred.data=df.test.mass,prog.bar=FALSE)
 
 mass.stat = (ij.mass$pred-ratio)/sqrt(ij.mass$var)
