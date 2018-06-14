@@ -40,18 +40,20 @@ class ltst(object):
         
         return np.column_stack((predAggr,var))
     
-    def test(self,predictedProportion,globalProportion=0.5):
-        testStat = np.array((predictedProportion[:,0]-globalProportion)/np.sqrt(predictedProportion[:,1])).flatten()
+    def test(self,predictedProportion,threshold=0.5,fdr=True):
+        testStat = np.array((predictedProportion[:,0]-threshold)/np.sqrt(predictedProportion[:,1])).flatten()
         pval = norm.cdf(testStat).flatten()
         idx = pval > 0.5
         pval[idx] = 1-pval[idx]
-        testPVal = fdrcorrection(2*pval)[1]
+        testPVal = 2*pval  # two-sided test
+        if fdr == True:
+            testPVal = fdrcorrection(testPVal)[1]
         high = (testPVal < 0.05) & (testStat > 0)
         low  = (testPVal < 0.05) & (testStat < 0)
         result = np.full(len(pval),-1).astype(int)
         result[high] = 1
         result[low]  = 0
-        return result
+        return result,testPVal
     
     #############################
     
@@ -94,35 +96,3 @@ class ltst(object):
         idx = np.array([np.where(aggPred[...,0] == node)[0][0] for node in predTestNode])
         predTest = np.column_stack((predTest,((aggPred[..., 1])[idx])))
         return predTest[...,-1]
-    
-#### Need to fix floating point error ###
-#
-## The readFile(path) function is adapted from the CMU 15-112 website
-## Week 3, Strings, Basic File IO Notes
-## https://www.cs.cmu.edu/~112/notes/notes-strings.html#basicFileIO
-## Modifications include transforming syntax to read in .csv files and to
-## convert this file to a 2D list of numeric values
-#
-#def readFile(path):
-#	dataList = []
-#	skipHeader = True
-#
-#	with open(path, 'rt') as csvfile:
-#		dataFile = csv.reader(csvfile)
-#
-#		for row in dataFile:
-#			if(skipHeader):
-#				skipHeader = False
-#				continue
-#
-#			temp = []
-#			for data in row:
-#				if("e" in data):
-#					ind = data.find("e")
-#					base = float(data[:ind])
-#					exp = int(data[ind + 1:])
-#					temp.append(base * 10**exp)
-#				else:
-#					temp.append(float(data))
-#			dataList.append(temp)
-#	return dataList
